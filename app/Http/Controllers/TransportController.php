@@ -29,6 +29,7 @@ class TransportController extends Controller
             'horary' => 'required|string|max:255',
             'supplier' => 'required|string|max:50',
             'provider_cost' => 'required|numeric|min:0.0001',
+            'client_cost' => 'nullable|numeric|min:0.0001',
             'booking_source' => 'nullable|string|max:50',
             'observations' => 'nullable|string|max:500',
         ]);
@@ -77,6 +78,7 @@ class TransportController extends Controller
             'horary' => 'required|string|max:255',
             'supplier' => 'required|string|max:50',
             'provider_cost' => 'required|numeric|min:0',
+            'client_cost' => 'nullable|numeric|min:0.0001',
             'booking_source' => 'nullable|string|max:50',
             'observations' => 'nullable|string|max:500',
         ]);

@@ -11,7 +11,8 @@ class PackageController extends Controller
     // 1. Listar TODOS los paquetes con su carrusel de imágenes (Admin View)
     public function index(Request $request)
     {
-        $query = Package::with(['city', 'user', 'images']);
+        $query = Package::with(['city', 'user', 'images'])
+            ->where('is_private', false);
 
         if ($request->boolean('bookable_only')) {
             $query->where('stock', '>', 0);
@@ -128,6 +129,7 @@ class PackageController extends Controller
     {
         $packages = Package::with(['city', 'images'])
             ->where('status', 'active')
+            ->where('is_private', false) 
             ->where('stock', '>', 0)
             ->get();
 

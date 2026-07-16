@@ -21,7 +21,7 @@ class UserController extends Controller
 
         $query = User::with(['role', 'packages'])
             ->where('role_id', $rolCliente->id)
-            ->where('state', 'active'); 
+            ->where('state', 'active');
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -39,7 +39,7 @@ class UserController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:45',
             'last_name' => 'required|string|max:45',
-            'email' => 'required|string|email|max:100|unique:users',
+            'email' => 'nullable|string|email|max:100|unique:users,email',
             'password' => 'required|string|min:8',
             'phone' => 'nullable|string|max:20',
             'role_id' => 'required|exists:roles,id',
@@ -56,17 +56,25 @@ class UserController extends Controller
         $user = User::create([
             'name' => $request->name,
             'last_name' => $request->last_name,
-            'email' => $request->email,
+            'email' => $request->email ?: null,
             'password' => Hash::make($request->password),
             'phone' => $request->phone,
             'state' => $request->state ?? 'active',
             'role_id' => $request->role_id,
         ]);
 
-        Password::sendResetLink(['email' => $user->email]);
+        $message = '¡Cliente creado con éxito!';
+
+        // 👇 Solo se manda invitación si hay correo real
+        if ($user->email) {
+            Password::sendResetLink(['email' => $user->email]);
+            $message .= ' Se le envió un correo para establecer su contraseña.';
+        } else {
+            $message .= ' No tiene correo registrado, así que no podrá iniciar sesión en el portal hasta que se le agregue uno.';
+        }
 
         return response()->json([
-            'message' => '¡Usuario creado con éxito por el administrador!',
+            'message' => $message,
             'user' => $user
         ], 201);
     }
@@ -93,7 +101,7 @@ class UserController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:45',
             'last_name' => 'sometimes|string|max:45',
-            'email' => 'sometimes|string|email|max:100|unique:users,email,' . $id,
+            'email' => 'nullable|string|email|max:100|unique:users,email,' . $id,
             'password' => 'nullable|string|min:8',
             'phone' => 'nullable|string|max:20',
             'role_id' => 'sometimes|exists:roles,id',
@@ -106,6 +114,8 @@ class UserController extends Controller
                 'errors' => $validator->errors()
             ], 400);
         }
+
+        $emailAgregadoPorPrimeraVez = empty($user->email) && $request->filled('email');
 
         $user->name = $request->name ?? $user->name;
         $user->last_name = $request->last_name ?? $user->last_name;
@@ -120,8 +130,16 @@ class UserController extends Controller
 
         $user->save();
 
+        $message = '¡Usuario actualizado con éxito!';
+
+        // manda invitación si se agregó correo por primera vez y no se envió antes
+        if ($emailAgregadoPorPrimeraVez) {
+            Password::sendResetLink(['email' => $user->email]);
+            $message .= ' Se le envió un correo para que establezca su contraseña de acceso.';
+        }
+
         return response()->json([
-            'message' => '¡Usuario actualizado con éxito!',
+            'message' => $message,
             'user' => $user
         ], 200);
     }
