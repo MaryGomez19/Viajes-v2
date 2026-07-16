@@ -17,6 +17,7 @@ use App\Http\Controllers\RoomPriceController;
 use App\Http\Controllers\PassengerController;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Hash;
+use App\Http\Controllers\QuickReservationController;
 
 // 1. Recursos y Catálogos generales públicos o semi-públicos
 Route::get('packages/public', [PackageController::class, 'publicIndex']);
@@ -66,6 +67,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::apiResource('users', UserController::class);
     Route::apiResource('reservations', ReservationController::class)->except(['store']);
     Route::apiResource('reservations.passengers', PassengerController::class);
+    Route::post('/reservations/quick', [QuickReservationController::class, 'store']);
 
     //reservaciones
     Route::patch('reservations/{id}/restore', [ReservationController::class, 'restore']);
@@ -75,6 +77,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
 
     Route::apiResource('flights', FlightController::class);
     Route::apiResource('packages', PackageController::class);
+    Route::get('/hotels/suggestions', [HotelController::class, 'suggestions']);
     Route::apiResource('hotels', HotelController::class);
     Route::apiResource('hotels.room-prices', RoomPriceController::class);
     Route::apiResource('transports', TransportController::class);

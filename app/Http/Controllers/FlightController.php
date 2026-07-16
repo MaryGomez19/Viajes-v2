@@ -28,6 +28,7 @@ class FlightController extends Controller
             'flight_schedule' => 'required|string|max:255',
             'hgdl_key' => 'required|string|max:20',
             'booking_source' => 'nullable|string|max:50',
+            'client_cost' => 'nullable|numeric|min:0.0001',
             'provider_cost' => 'required|numeric|min:0.0001',
             'observations' => 'nullable|string|max:500',
         ]);
@@ -76,6 +77,7 @@ class FlightController extends Controller
             'flight_schedule' => 'required|string|max:255',
             'hgdl_key' => 'required|string|max:20',
             'booking_source' => 'nullable|string|max:50',
+            'client_cost' => 'nullable|numeric|min:0.0001',
             'provider_cost' => 'required|numeric|min:0',
             'observations' => 'nullable|string|max:500',
         ]);

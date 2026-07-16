@@ -33,6 +33,8 @@ class HotelController extends Controller
             'hgdl_key'             => 'nullable|string|max:20',
             'supplier'             => 'nullable|string|max:45',
             'booking_source'       => 'nullable|string|max:50',
+            'check_in_out' => 'nullable|string|max:255',
+            'client_cost' => 'nullable|numeric|min:0|max:9999999999999.9999',
             'provider_cost'        => 'nullable|numeric|min:0|max:9999999999999.9999',
             'observations'         => 'nullable|string|max:1000',
         ]);
@@ -81,6 +83,8 @@ class HotelController extends Controller
             'hgdl_key'       => 'nullable|string|max:20',
             'supplier'       => 'nullable|string|max:45',
             'booking_source' => 'nullable|string|max:50',
+            'check_in_out' => 'nullable|string|max:255',
+            'client_cost' => 'nullable|numeric|min:0|max:9999999999999.9999',
             'provider_cost'  => 'nullable|numeric|min:0|max:9999999999999.9999',
             'observations'   => 'nullable|string|max:1000',
         ]);
@@ -117,5 +121,23 @@ class HotelController extends Controller
         return response()->json([
             'message' => 'Hotel eliminado correctamente.',
         ]);
+    }
+
+    public function suggestions(Request $request)
+    {
+        $search = addcslashes($request->input('q', ''), '%_');
+
+        if (strlen($search) < 2) {
+            return response()->json([]);
+        }
+
+        $hotels = Hotel::select('name', 'destination', 'supplier', 'hgdl_key', 'booking_source', 'provider_cost')
+            ->where('name', 'like', "%{$search}%")
+            ->groupBy('name', 'destination', 'supplier', 'hgdl_key', 'booking_source', 'provider_cost')
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get();
+
+        return response()->json($hotels);
     }
 }

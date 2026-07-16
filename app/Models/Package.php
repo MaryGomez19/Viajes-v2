@@ -25,6 +25,7 @@ class Package extends Model
         'price_child',
         'image_path', // Imagen principal
         'status',
+        'is_private',
     ];
 
     protected function casts(): array

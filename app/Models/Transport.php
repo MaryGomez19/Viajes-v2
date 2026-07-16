@@ -17,12 +17,28 @@ class Transport extends Model
         'horary',
         'supplier',
         'provider_cost',
+        'client_cost',
         'booking_source',
         'observations',
+    ];
+
+    protected $appends = ['profit'];
+
+    protected $casts = [
+        'provider_cost' => 'decimal:4',
+        'client_cost' => 'decimal:4',
     ];
 
     public function reservation()
     {
         return $this->belongsTo(Reservation::class);
+    }
+
+    public function getProfitAttribute()
+    {
+        if ($this->client_cost === null || $this->provider_cost === null) {
+            return null;
+        }
+        return round($this->client_cost - $this->provider_cost, 4);
     }
 }
