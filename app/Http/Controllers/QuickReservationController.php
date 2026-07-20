@@ -13,6 +13,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class QuickReservationController extends Controller
 {
@@ -22,7 +24,14 @@ class QuickReservationController extends Controller
 
         $data = $request->validate([
             // Cliente dueño de la cuenta
-            'user_id' => [Rule::requiredIf($isAdmin), 'nullable', 'exists:users,id'],
+            'user_id' => ['nullable', 'exists:users,id', Rule::requiredIf(fn() => $isAdmin && !$request->filled('new_client'))],
+
+            // Cliente nuevo — opcional, alternativa a user_id
+            'new_client' => 'nullable|array',
+            'new_client.name' => 'required_with:new_client|string|max:100',
+            'new_client.last_name' => 'required_with:new_client|string|max:100',
+            'new_client.email' => 'nullable|email|max:150|unique:users,email',
+            'new_client.phone' => 'nullable|string|max:20',
 
             // Datos del "paquete privado" (invisible en la web)
             'city_id' => 'required|exists:cities,id',
@@ -91,13 +100,18 @@ class QuickReservationController extends Controller
             'transport.observations' => 'nullable|string|max:500',
         ]);
 
+        if (empty($data['user_id']) && empty($data['new_client'])) {
+            abort(422, 'Debes seleccionar un cliente existente o proporcionar los datos de uno nuevo.');
+        }
+
         if (!empty($data['user_id'])) {
             $cliente = User::find($data['user_id']);
             if (!$cliente || $cliente->state !== 'active') {
                 abort(422, 'No se puede crear una reserva para un cliente inactivo o baneado.');
             }
         }
-        $data['user_id'] = $isAdmin ? $data['user_id'] : $request->user()->id;
+
+        $data['user_id'] = $isAdmin ? ($data['user_id'] ?? null) : $request->user()->id;
 
         $data = $this->normalizePassengers($data);
 
@@ -106,6 +120,22 @@ class QuickReservationController extends Controller
         }
 
         return DB::transaction(function () use ($data, $request) {
+            // 0. Cliente nuevo (si aplica) — dentro de la misma transacción
+            if (empty($data['user_id']) && !empty($data['new_client'])) {
+                $nc = $data['new_client'];
+
+                $nuevoCliente = User::create([
+                    'name' => trim($nc['name']),
+                    'last_name' => trim($nc['last_name']),
+                    'email' => !empty($nc['email']) ? trim($nc['email']) : null,
+                    'phone' => !empty($nc['phone']) ? trim($nc['phone']) : null,
+                    'password' => Hash::make(Str::random(10)),
+                    'state' => 'active',
+                    'role_id' => 2,
+                ]);
+                $data['user_id'] = $nuevoCliente->id;
+            }
+
             // 1. Paquete privado, oculto en la web
             $package = Package::create([
                 'name' => $data['name'] ?? 'Reserva privada - ' . ($data['reference_person'] ?? now()->format('d/m/Y')),
