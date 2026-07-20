@@ -19,7 +19,6 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:100|unique:users',
             'password' => 'required|string|min:8',
             'phone' => 'nullable|string|max:20',
-            'role_id' => 'required|exists:roles,id',
         ]);
 
         if ($validator->fails()) {
@@ -33,10 +32,8 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
             'phone' => $request->phone,
             'state' => 'active',
-            'role_id' => $request->role_id,
+            'role_id' => 2,
         ]);
-
-        //$user->sendEmailVerificationNotification();
 
         return response()->json([
             'message' => '¡Usuario registrado con éxito! Revisa tu correo para verificar tu cuenta.',
