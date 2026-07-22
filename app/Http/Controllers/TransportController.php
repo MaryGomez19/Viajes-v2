@@ -50,6 +50,8 @@ class TransportController extends Controller
         }
 
         $transport = Transport::create($data);
+        $transport->reservation?->recalculateTotalAmount();
+
         return response()->json([
             'message' => '¡Información de transporte creada con éxito!',
             'transport' => $transport
@@ -88,6 +90,7 @@ class TransportController extends Controller
         ]);
 
         $transport->update($data);
+        $transport->reservation?->recalculateTotalAmount();
 
         return response()->json([
             'message' => 'Transporte actualizado correctamente',
@@ -106,7 +109,10 @@ class TransportController extends Controller
             ], 422);
         }
 
+        $reservation = $transport->reservation;
         $transport->delete();
+        $reservation?->recalculateTotalAmount();
+
         return response()->json(['message' => 'Transporte eliminado correctamente']);
     }
 }

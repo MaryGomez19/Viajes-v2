@@ -49,6 +49,8 @@ class FlightController extends Controller
         }
 
         $flight = Flight::create($data);
+        $flight->reservation?->recalculateTotalAmount();
+
         return response()->json([
             'message' => '¡Información de vuelo creada con éxito!',
             'flight' => $flight
@@ -87,6 +89,7 @@ class FlightController extends Controller
         ]);
 
         $flight->update($data);
+        $flight->reservation?->recalculateTotalAmount();
 
         return response()->json([
             'message' => 'Vuelo actualizado correctamente',
@@ -105,7 +108,10 @@ class FlightController extends Controller
             ], 422);
         }
 
+        $reservation = $flight->reservation;
         $flight->delete();
+        $reservation?->recalculateTotalAmount();
+
         return response()->json(['message' => 'Vuelo eliminado correctamente']);
     }
 }

@@ -47,6 +47,31 @@ class Reservation extends Model
         return ($this->adults ?? 0) + ($this->juniors ?? 0) + ($this->children ?? 0);
     }
 
+    public function packageSubtotal(): float
+    {
+        return round(
+            ($this->adults * $this->unit_price_adult) +
+            ($this->juniors * $this->unit_price_junior) +
+            ($this->children * $this->unit_price_child),
+            2
+        );
+    }
+
+    public function recalculateTotalAmount(): void
+    {
+        $this->loadMissing(['flight', 'transport']);
+
+        $total = $this->packageSubtotal()
+            + (float) ($this->flight?->client_cost ?? 0)
+            + (float) ($this->transport?->client_cost ?? 0);
+
+        $total = round($total, 2);
+
+        if ((float) $this->total_amount !== $total) {
+            $this->update(['total_amount' => $total]);
+        }
+    }
+
     public function package(): BelongsTo
     {
         return $this->belongsTo(Package::class);
@@ -147,5 +172,22 @@ class Reservation extends Model
     public function paymentReceipts()
     {
         return $this->hasMany(PaymentReceipt::class);
+    }
+
+    /**
+     * Permite a admins resolver reservas archivadas en rutas tipo /reservations/{reservation}/...
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $field = $field ?: $this->getRouteKeyName();
+
+        $query = static::query()->where($field, $value);
+
+        $user = auth()->user();
+        if ($user && method_exists($user, 'hasRole') && $user->hasRole('admin')) {
+            $query->withTrashed();
+        }
+
+        return $query->first();
     }
 }

@@ -21,6 +21,7 @@ use App\Http\Controllers\PartialPaymentController;
 use App\Http\Controllers\ScheduledPaymentController;
 use App\Http\Controllers\PaymentReceiptController;
 use App\Http\Controllers\QuickReservationController;
+use App\Http\Controllers\AdminNotificationController;
 
 // 1. Recursos y Catálogos generales públicos o semi-públicos
 Route::get('packages/public', [PackageController::class, 'publicIndex']);
@@ -102,6 +103,9 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::get('reservations/{reservation}/account', [AccountController::class, 'showByReservation']);
     Route::apiResource('accounts.partial-payments', PartialPaymentController::class);
     Route::apiResource('accounts.scheduled-payments', ScheduledPaymentController::class);
+
+    Route::get('admin/notifications/count', [AdminNotificationController::class, 'count']);
+    Route::get('admin/notifications', [AdminNotificationController::class, 'index']);
 });
 
 // C) 👥 SOLO CLIENTES 

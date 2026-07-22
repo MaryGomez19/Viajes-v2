@@ -5,8 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Reservation;
 use App\Models\Package;
 use App\Models\User;
+use App\Models\Flight;
+use App\Models\Hotel;
+use App\Models\Transport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ReservationController extends Controller
@@ -89,15 +93,19 @@ class ReservationController extends Controller
 
         $reserva = Reservation::where('user_id', $user->id)
             ->where('id', $id)
-            ->with(['package.city', 'flight', 'passengers'])
+            ->with(['package.city', 'flight', 'transport', 'hotel', 'passengers'])
             ->first();
 
         if (!$reserva) {
             return response()->json(['message' => 'Reserva no encontrada'], 404);
         }
 
-        // Solo devolvemos los campos que el cliente puede ver
-        return response()->json([
+        return response()->json($this->formatReservationForClient($reserva));
+    }
+
+    private function formatReservationForClient(Reservation $reserva): array
+    {
+        return [
             'id' => $reserva->id,
             'reservation_date' => $reserva->reservation_date,
             'departure_date' => $reserva->departure_date,
@@ -111,14 +119,77 @@ class ReservationController extends Controller
             'unit_price_child' => $reserva->unit_price_child,
             'total_amount' => $reserva->total_amount,
             'state' => $reserva->state,
+            'observations' => $reserva->observations,
             'passengers' => $reserva->passengers,
             'package' => $reserva->package,
-            'flight' => $reserva->flight ? [
-                'airline_name' => $reserva->flight->airline_name,
-                'destination' => $reserva->flight->destination,
-                'flight_schedule' => $reserva->flight->flight_schedule,
-            ] : null,
-        ]);
+            'flight' => $this->clientFlightPayload($reserva->flight, $reserva->state),
+            'transport' => $this->clientTransportPayload($reserva->transport, $reserva->state),
+            'hotel' => $this->clientHotelPayload($reserva->hotel, $reserva->state),
+        ];
+    }
+
+    private function clientCanSeeHgdlKey(string $state, ?string $key): bool
+    {
+        return strtolower(trim($state)) === 'paid' && filled($key);
+    }
+
+    private function clientFlightPayload(?Flight $flight, string $state): ?array
+    {
+        if (!$flight) {
+            return null;
+        }
+
+        $payload = [
+            'airline_name' => $flight->airline_name,
+            'destination' => $flight->destination,
+            'flight_schedule' => $flight->flight_schedule,
+            'client_cost' => $flight->client_cost,
+        ];
+
+        if ($this->clientCanSeeHgdlKey($state, $flight->hgdl_key)) {
+            $payload['hgdl_key'] = $flight->hgdl_key;
+        }
+
+        return $payload;
+    }
+
+    private function clientTransportPayload(?Transport $transport, string $state): ?array
+    {
+        if (!$transport) {
+            return null;
+        }
+
+        $payload = [
+            'company' => $transport->company,
+            'horary' => $transport->horary,
+            'destination' => $transport->destination,
+            'client_cost' => $transport->client_cost,
+        ];
+
+        if ($this->clientCanSeeHgdlKey($state, $transport->hgdl_key)) {
+            $payload['hgdl_key'] = $transport->hgdl_key;
+        }
+
+        return $payload;
+    }
+
+    private function clientHotelPayload(?Hotel $hotel, string $state): ?array
+    {
+        if (!$hotel) {
+            return null;
+        }
+
+        $payload = [
+            'name' => $hotel->name,
+            'destination' => $hotel->destination,
+            'check_in_out' => $hotel->check_in_out,
+        ];
+
+        if ($this->clientCanSeeHgdlKey($state, $hotel->hgdl_key)) {
+            $payload['hgdl_key'] = $hotel->hgdl_key;
+        }
+
+        return $payload;
     }
 
     public function store(Request $request)
@@ -183,9 +254,11 @@ class ReservationController extends Controller
                 $package->decrement('stock', $seats);
             }
 
+            $reservation->recalculateTotalAmount();
+
             return response()->json([
                 'message' => '¡Reserva creada con éxito!',
-                'reservation' => $reservation->load(['package.city', 'user', 'account']),
+                'reservation' => $reservation->fresh(['package.city', 'user', 'account', 'flight', 'transport']),
             ], 201);
         });
     }
@@ -204,12 +277,26 @@ class ReservationController extends Controller
                 'flightWithTrashed',
                 'hotelWithTrashed',
                 'transportWithTrashed',
+                'hotelWithTrashed.roomPrices',
+                'documents',
             ])
             ->findOrFail($id);
 
         $reservation->is_archived = $reservation->trashed();
 
-        return response()->json($reservation);
+        $payload = $reservation->toArray();
+        $payload['documents'] = $reservation->documents
+            ->map(fn ($doc) => [
+                'id' => $doc->id,
+                'type' => $doc->type,
+                'original_name' => $doc->original_name,
+                'url' => Storage::disk('public')->url($doc->file_path),
+                'created_at' => $doc->created_at,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json($payload);
     }
 
     public function update(Request $request, Reservation $reservation)
@@ -279,10 +366,11 @@ class ReservationController extends Controller
             }
 
             $reservation->update($data);
+            $reservation->recalculateTotalAmount();
 
             return response()->json([
                 'message' => '¡Reserva actualizada con éxito!',
-                'reservation' => $reservation->fresh(['package.city', 'package.user']),
+                'reservation' => $reservation->fresh(['package.city', 'package.user', 'flight', 'transport']),
             ]);
         });
     }

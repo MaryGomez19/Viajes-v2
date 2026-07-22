@@ -46,6 +46,8 @@ class AccountController extends Controller
         $account->load([
             'reservation.user',
             'reservation.package.city',
+            'reservation.flight',
+            'reservation.transport',
             'partialPayments',
             'scheduledPayments',
         ]);
@@ -63,6 +65,8 @@ class AccountController extends Controller
             ->with([
                 'reservation.user',
                 'reservation.package.city',
+                'reservation.flight',
+                'reservation.transport',
                 'partialPayments',
                 'scheduledPayments',
             ])

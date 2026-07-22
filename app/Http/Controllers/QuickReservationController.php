@@ -252,6 +252,8 @@ class QuickReservationController extends Controller
                 ]);
             }
 
+            $reservation->recalculateTotalAmount();
+
             return response()->json([
                 'message' => '¡Reserva privada creada con éxito!',
                 'reservation' => $reservation->load([
