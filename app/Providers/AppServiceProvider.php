@@ -2,9 +2,9 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Auth\Notifications\ResetPassword;
-
+use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -21,8 +21,27 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        ResetPassword::createUrlUsing(function ($user, string $token) {
-            return 'http://localhost:5173/reset-password?token=' . $token . '&email=' . urlencode($user->email);
+        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:5173'), '/');
+
+        ResetPassword::createUrlUsing(function ($user, string $token) use ($frontendUrl) {
+            return $frontendUrl
+                . '/reset-password?token=' . $token
+                . '&email=' . urlencode($user->email);
+        });
+
+        ResetPassword::toMailUsing(function ($notifiable, string $token) use ($frontendUrl) {
+            $url = $frontendUrl
+                . '/reset-password?token=' . $token
+                . '&email=' . urlencode($notifiable->getEmailForPasswordReset());
+
+            return (new MailMessage)
+                ->subject('Restablecer contraseña — Viajes Sueña')
+                ->greeting('Hola')
+                ->line('Recibimos una solicitud para restablecer la contraseña de tu cuenta.')
+                ->action('Restablecer contraseña', $url)
+                ->line('Este enlace expira en 60 minutos.')
+                ->line('Si no solicitaste este cambio, puedes ignorar este correo.')
+                ->salutation('Saludos, Viajes Sueña');
         });
     }
 }

@@ -26,8 +26,9 @@ class PackageController extends Controller
     // 2. Crear un nuevo paquete
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'description' => 'nullable|string|max:2000',
             'city_id' => 'required|exists:cities,id',
             'duration' => 'required|string|max:255',
             'departure_date' => 'required|date|after_or_equal:today',
@@ -36,11 +37,14 @@ class PackageController extends Controller
             'price_adult' => 'required|numeric|min:0',
             'price_junior' => 'required|numeric|min:0',
             'price_child' => 'required|numeric|min:0',
+            'status' => 'sometimes|in:active,inactive',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
 
-        $packageData = $request->except('image');
-        $packageData['user_id'] = $request->user() ? $request->user()->id : 1;
+        $packageData = collect($validated)->except(['image'])->all();
+        $packageData['user_id'] = $request->user()->id;
+        $packageData['status'] = $packageData['status'] ?? 'active';
+        $packageData['is_private'] = false;
 
         if ($request->hasFile('image')) {
             $packageData['image_path'] = $request->file('image')->store('packages', 'public');
@@ -75,8 +79,9 @@ class PackageController extends Controller
             return response()->json(['message' => 'Paquete no encontrado'], 404);
         }
 
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
+            'description' => 'nullable|string|max:2000',
             'city_id' => 'sometimes|exists:cities,id',
             'duration' => 'sometimes|string|max:255',
             'departure_date' => 'sometimes|date',
@@ -85,11 +90,11 @@ class PackageController extends Controller
             'price_adult' => 'sometimes|numeric|min:0',
             'price_junior' => 'sometimes|numeric|min:0',
             'price_child' => 'sometimes|numeric|min:0',
-            'image' => 'nullable|image|max:2048',
             'status' => 'sometimes|in:active,inactive',
+            'image' => 'nullable|image|max:2048',
         ]);
 
-        $data = $request->except('image');
+        $data = collect($validated)->except(['image'])->all();
 
         if ($request->hasFile('image')) {
             if ($package->image_path) {

@@ -11,8 +11,8 @@ class RoleController extends Controller
     {
         // 1. Validamos que nos manden el nombre
         $request->validate([
-            'name' => 'required|string|unique:roles',
-            'description' => 'nullable|string'
+            'name' => 'required|string|max:50|unique:roles',
+            'description' => 'nullable|string|max:255',
         ]);
 
         // 2. Creamos el rol en la base de datos

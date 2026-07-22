@@ -1,8 +1,9 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\PasswordController;
+use App\Http\Controllers\Api\PhoneOtpController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\HotelController;
@@ -15,40 +16,35 @@ use App\Http\Controllers\FlightController;
 use App\Http\Controllers\TransportController;
 use App\Http\Controllers\RoomPriceController;
 use App\Http\Controllers\PassengerController;
-use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Facades\Hash;
+use App\Http\Controllers\AccountController;
+use App\Http\Controllers\PartialPaymentController;
+use App\Http\Controllers\ScheduledPaymentController;
+use App\Http\Controllers\PaymentReceiptController;
 use App\Http\Controllers\QuickReservationController;
 
 // 1. Recursos y Catálogos generales públicos o semi-públicos
 Route::get('packages/public', [PackageController::class, 'publicIndex']);
 
 Route::get('/cities', [CityController::class, 'index']);
-Route::post('/cities', [CityController::class, 'store']);
-Route::post('/roles', [RoleController::class, 'store']);
 
 // 2. Autenticación de la API
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-// Reset de la contraseña
-Route::post('/forgot-password', function (Request $request) {
-    Password::sendResetLink($request->only('email'));
-    return response()->json(['message' => 'Link enviado si el correo existe.']);
-})->name('password.email');
+// Acceso con codigo SMS (telefono registrado)
+Route::post('/otp/send', [PhoneOtpController::class, 'send'])
+    ->middleware('throttle:5,1');
+Route::post('/otp/verify', [PhoneOtpController::class, 'verify'])
+    ->middleware('throttle:10,1');
 
-Route::post('/reset-password', function (Request $request) {
-    $status = Password::reset(
-        $request->only('email', 'password', 'password_confirmation', 'token'),
-        function ($user, $password) {
-            $user->password = Hash::make($password);
-            $user->save();
-        }
-    );
+// Reset de contraseña por correo (opcional)
+Route::post('/forgot-password', [PasswordController::class, 'forgotPassword'])
+    ->middleware('throttle:5,1')
+    ->name('password.email');
 
-    return $status === Password::PASSWORD_RESET
-        ? response()->json(['message' => 'Contraseña actualizada.'])
-        : response()->json(['message' => 'Token inválido o expirado.'], 400);
-})->name('password.reset');
+Route::post('/reset-password', [PasswordController::class, 'resetPassword'])
+    ->middleware('throttle:10,1')
+    ->name('password.reset');
 
 
 // =========================================================================
@@ -64,6 +60,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // B) 👑 SOLO ADMINISTRADORES
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
+    Route::post('/cities', [CityController::class, 'store']);
+    Route::post('/roles', [RoleController::class, 'store']);
     Route::apiResource('users', UserController::class);
     Route::apiResource('reservations', ReservationController::class)->except(['store']);
     Route::apiResource('reservations.passengers', PassengerController::class);
@@ -87,15 +85,33 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::post('reservations/{reservation}/documents', [ReservationDocumentController::class, 'store']);
     Route::delete('reservation-documents/{document}', [ReservationDocumentController::class, 'destroy']);
 
+    Route::get('payment-receipts', [PaymentReceiptController::class, 'indexAllForAdmin']);
+    Route::get('reservations/{reservation}/payment-receipts', [PaymentReceiptController::class, 'indexForAdmin']);
+    Route::patch('payment-receipts/{paymentReceipt}', [PaymentReceiptController::class, 'updateForAdmin']);
+    Route::delete('payment-receipts/{paymentReceipt}', [PaymentReceiptController::class, 'destroyForAdmin']);
+
     // 📸 Endpoints para subir y borrar fotos del carrusel
     Route::post('/package-images', [PackageImageController::class, 'store']);
     Route::delete('/package-images/{id}', [PackageImageController::class, 'destroy']);
+
+    // 💰 Cuentas, pagos parciales y abonos programados
+    Route::get('accounts', [AccountController::class, 'index']);
+    Route::get('accounts/{account}', [AccountController::class, 'show']);
+    Route::put('accounts/{account}', [AccountController::class, 'update']);
+    Route::patch('accounts/{account}', [AccountController::class, 'update']);
+    Route::get('reservations/{reservation}/account', [AccountController::class, 'showByReservation']);
+    Route::apiResource('accounts.partial-payments', PartialPaymentController::class);
+    Route::apiResource('accounts.scheduled-payments', ScheduledPaymentController::class);
 });
 
 // C) 👥 SOLO CLIENTES 
 Route::middleware(['auth:sanctum', 'role:cliente'])->group(function () {
     Route::get('/mis-reservas', [ReservationController::class, 'misReservas']);
     Route::get('/mis-reservas/{id}', [ReservationController::class, 'misReservaDetalle']);
+    Route::get('/mis-reservas/{reservation}/account', [AccountController::class, 'showByReservationForClient']);
+    Route::get('/mis-reservas/{reservation}/payment-receipts', [PaymentReceiptController::class, 'indexForClient']);
+    Route::post('/mis-reservas/{reservation}/payment-receipts', [PaymentReceiptController::class, 'storeForClient']);
+    Route::delete('/mis-reservas/{reservation}/payment-receipts/{paymentReceipt}', [PaymentReceiptController::class, 'destroyForClient']);
     Route::get('/mis-reservas/{reservation}/passengers', [PassengerController::class, 'index']);
     Route::post('/mis-reservas/{reservation}/passengers', [PassengerController::class, 'store']);
     Route::get('/mis-reservas/{reservation}/passengers/{passenger}', [PassengerController::class, 'show']);

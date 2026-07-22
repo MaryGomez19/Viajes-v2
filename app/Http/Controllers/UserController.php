@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\PhoneHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -24,7 +25,7 @@ class UserController extends Controller
             ->where('state', 'active');
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = addcslashes($request->search, '%_');
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
                     ->orWhere('email', 'LIKE', "%{$search}%");
@@ -186,8 +187,9 @@ class UserController extends Controller
             'name' => 'sometimes|string|max:45',
             'last_name' => 'sometimes|string|max:45',
             'email' => 'sometimes|string|email|max:100|unique:users,email,' . $user->id,
-            'password' => 'nullable|string|min:8',
             'phone' => 'nullable|string|max:20',
+            'phone_last4' => 'required_with:password|string|size:4|regex:/^\d{4}$/',
+            'password' => 'nullable|string|min:8|confirmed',
         ]);
 
         if ($validator->fails()) {
@@ -197,13 +199,35 @@ class UserController extends Controller
             ], 400);
         }
 
+        if ($request->filled('password')) {
+            $normalizedPhone = PhoneHelper::normalize($user->phone);
+
+            if (!$normalizedPhone) {
+                return response()->json([
+                    'message' => 'Errores de validación',
+                    'errors' => [
+                        'phone_last4' => ['No tienes teléfono registrado. Agrega uno en tu perfil primero.'],
+                    ],
+                ], 400);
+            }
+
+            if ($request->phone_last4 !== substr($normalizedPhone, -4)) {
+                return response()->json([
+                    'message' => 'Errores de validación',
+                    'errors' => [
+                        'phone_last4' => ['Los últimos 4 dígitos no coinciden con tu teléfono.'],
+                    ],
+                ], 400);
+            }
+        }
+
         $user->name = $request->name ?? $user->name;
         $user->last_name = $request->last_name ?? $user->last_name;
         $user->email = $request->email ?? $user->email;
         $user->phone = $request->phone ?? $user->phone;
 
         if ($request->filled('password')) {
-            $user->password = Hash::make($request->password);
+            $user->password = $request->password;
         }
 
         $user->save();

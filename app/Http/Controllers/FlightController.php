@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\AssertsReservationServiceable;
 use App\Models\Flight;
 use Illuminate\Http\Request;
 
 class FlightController extends Controller
 {
+    use AssertsReservationServiceable;
     /**
      * Display a listing of the resource.
      */
@@ -32,6 +34,8 @@ class FlightController extends Controller
             'provider_cost' => 'required|numeric|min:0.0001',
             'observations' => 'nullable|string|max:500',
         ]);
+
+        $this->assertReservationServiceable((int) $data['reservation_id']);
 
         $exists = Flight::where(
             'reservation_id',

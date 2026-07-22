@@ -11,12 +11,9 @@ use Illuminate\Validation\Rule;
 
 class ReservationController extends Controller
 {
-    /**
-     * Tope de registros por página. Evita que alguien pida
-     * ?per_page=999999 y fuerce al servidor a serializar la tabla entera.
-     */
     private const MAX_PER_PAGE = 100;
     private const DEFAULT_PER_PAGE = 20;
+    private const STATES = ['pending', 'confirmed', 'canceled', 'finished', 'paid'];
 
 
     public function index(Request $request)
@@ -46,11 +43,13 @@ class ReservationController extends Controller
         }
 
         if ($request->filled('state')) {
+            $request->validate(['state' => 'in:' . implode(',', self::STATES)]);
             $query->where('state', $request->input('state'));
         }
 
         // Filtro por tipo de paquete (público/privado)
         if ($request->filled('package_status')) {
+            $request->validate(['package_status' => 'in:active,inactive']);
             $query->whereHas('package', function ($q) use ($request) {
                 $q->where('status', $request->input('package_status'));
             });
@@ -141,24 +140,34 @@ class ReservationController extends Controller
             'juniors' => 'nullable|integer|min:0',
             'children' => 'nullable|integer|min:0',
             'reserved_seats' => 'nullable|integer|min:1',
-            'state' => 'required|in:pending,confirmed,canceled,finished,paid',
             'observations' => 'nullable|string|max:500',
         ];
-        $data = $request->validate($rules);
 
-        if (!empty($data['user_id'])) {
-            $cliente = User::find($data['user_id']);
-            if (!$cliente || $cliente->state !== 'active') {
-                abort(422, 'No se puede crear una reserva para un cliente inactivo o baneado.');
-            }
+        if ($isAdmin) {
+            $rules['state'] = 'required|in:' . implode(',', self::STATES);
         }
 
-        $data['user_id'] = $isAdmin
-            ? $data['user_id']
-            : $request->user()->id;
+        $data = $request->validate($rules);
 
-        return DB::transaction(function () use ($data) {
+        if ($isAdmin) {
+            $cliente = User::with('role')->find($data['user_id']);
+            if (!$cliente || !$cliente->hasRole('cliente') || $cliente->state !== 'active') {
+                abort(422, 'Debes seleccionar un cliente activo válido.');
+            }
+        } else {
+            $data['state'] = 'pending';
+            $data['user_id'] = $request->user()->id;
+        }
+
+        return DB::transaction(function () use ($data, $isAdmin) {
             $package = Package::lockForUpdate()->findOrFail($data['package_id']);
+
+            if (!$isAdmin) {
+                if ($package->status !== 'active' || $package->is_private) {
+                    abort(422, 'Este paquete no está disponible para reservar.');
+                }
+            }
+
             $data = $this->normalizePassengers($data);
             $this->applyPricing($package, $data);
             $seats = $data['reserved_seats'];
@@ -176,7 +185,7 @@ class ReservationController extends Controller
 
             return response()->json([
                 'message' => '¡Reserva creada con éxito!',
-                'reservation' => $reservation->load(['package.city', 'user']),
+                'reservation' => $reservation->load(['package.city', 'user', 'account']),
             ], 201);
         });
     }
@@ -219,7 +228,7 @@ class ReservationController extends Controller
             'juniors' => 'nullable|integer|min:0',
             'children' => 'nullable|integer|min:0',
             'reserved_seats' => 'nullable|integer|min:1',
-            'state' => 'required|in:pending,confirmed,canceled,finished,paid',
+            'state' => 'required|in:' . implode(',', self::STATES),
             'observations' => 'nullable|string|max:500',
         ]);
 
@@ -380,7 +389,17 @@ class ReservationController extends Controller
 
     public function destroy(Reservation $reservation)
     {
-        $reservation->delete();
+        DB::transaction(function () use ($reservation) {
+            if ($reservation->state !== 'canceled') {
+                $package = Package::lockForUpdate()->find($reservation->package_id);
+
+                if ($package && ($reservation->reserved_seats ?? 0) > 0) {
+                    $package->increment('stock', $reservation->reserved_seats);
+                }
+            }
+
+            $reservation->delete();
+        });
 
         return response()->json(['message' => 'Reserva archivada correctamente'], 200);
     }
@@ -388,8 +407,30 @@ class ReservationController extends Controller
     //para restaurar, por si se archivo por error
     public function restore(Request $request, $id)
     {
-        $reservation = Reservation::onlyTrashed()->findOrFail($id);
-        $reservation->restore();
+        $reservation = DB::transaction(function () use ($id) {
+            $reservation = Reservation::onlyTrashed()->findOrFail($id);
+
+            if ($reservation->state !== 'canceled') {
+                $package = Package::lockForUpdate()->findOrFail($reservation->package_id);
+                $seats = $reservation->reserved_seats ?? 0;
+
+                if ($seats > 0 && $package->stock < $seats) {
+                    abort(422, 'No hay stock suficiente para restaurar esta reserva.');
+                }
+
+                if ($seats > 0) {
+                    $package->decrement('stock', $seats);
+                }
+            }
+
+            $reservation->restore();
+
+            if ($reservation->account && $reservation->state !== 'canceled') {
+                $reservation->account->recalculateState();
+            }
+
+            return $reservation;
+        });
 
         return response()->json([
             'message' => 'Reserva restaurada correctamente',

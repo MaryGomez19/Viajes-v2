@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\AssertsReservationServiceable;
 use App\Models\Hotel;
 use Illuminate\Http\Request;
 
 class HotelController extends Controller
 {
+    use AssertsReservationServiceable;
     /**
      * Listar todos los hoteles con sus precios por habitación.
      */
@@ -27,7 +29,7 @@ class HotelController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'reservation_id' => 'nullable|exists:reservations,id',
+            'reservation_id' => 'required|exists:reservations,id',
             'name'                 => 'required|string|max:50',
             'destination'          => 'nullable|string|max:50',
             'hgdl_key'             => 'nullable|string|max:20',
@@ -38,6 +40,8 @@ class HotelController extends Controller
             'provider_cost'        => 'nullable|numeric|min:0|max:9999999999999.9999',
             'observations'         => 'nullable|string|max:1000',
         ]);
+
+        $this->assertReservationServiceable((int) $data['reservation_id']);
 
         $exists = Hotel::where('reservation_id', $data['reservation_id'])->exists();
 

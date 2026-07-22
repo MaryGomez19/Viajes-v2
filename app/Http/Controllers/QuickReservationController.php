@@ -10,6 +10,7 @@ use App\Models\RoomPrice;
 use App\Models\Flight;
 use App\Models\Transport;
 use App\Models\User;
+use App\Models\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -105,15 +106,16 @@ class QuickReservationController extends Controller
         }
 
         if (!empty($data['user_id'])) {
-            $cliente = User::find($data['user_id']);
-            if (!$cliente || $cliente->state !== 'active') {
-                abort(422, 'No se puede crear una reserva para un cliente inactivo o baneado.');
+            $cliente = User::with('role')->find($data['user_id']);
+            if (!$cliente || !$cliente->hasRole('cliente') || $cliente->state !== 'active') {
+                abort(422, 'Debes seleccionar un cliente activo válido.');
             }
         }
 
         $data['user_id'] = $isAdmin ? ($data['user_id'] ?? null) : $request->user()->id;
 
         $data = $this->normalizePassengers($data);
+        $this->validatePassengerTypes($data);
 
         if (count($data['passengers']) !== $data['reserved_seats']) {
             abort(422, 'El número de pasajeros no coincide con el total de lugares (adultos + juniors + niños).');
@@ -123,6 +125,11 @@ class QuickReservationController extends Controller
             // 0. Cliente nuevo (si aplica) — dentro de la misma transacción
             if (empty($data['user_id']) && !empty($data['new_client'])) {
                 $nc = $data['new_client'];
+                $rolCliente = Role::findByKey(Role::CLIENTE);
+
+                if (!$rolCliente) {
+                    abort(500, 'Rol de cliente no configurado.');
+                }
 
                 $nuevoCliente = User::create([
                     'name' => trim($nc['name']),
@@ -131,7 +138,7 @@ class QuickReservationController extends Controller
                     'phone' => !empty($nc['phone']) ? trim($nc['phone']) : null,
                     'password' => Hash::make(Str::random(10)),
                     'state' => 'active',
-                    'role_id' => 2,
+                    'role_id' => $rolCliente->id,
                 ]);
                 $data['user_id'] = $nuevoCliente->id;
             }
@@ -281,5 +288,22 @@ class QuickReservationController extends Controller
         $data['reserved_seats'] = $total;
 
         return $data;
+    }
+
+    private function validatePassengerTypes(array $data): void
+    {
+        $typeCounts = array_count_values(array_column($data['passengers'], 'type'));
+
+        if (($typeCounts['adult'] ?? 0) !== $data['adults']) {
+            abort(422, 'La cantidad de pasajeros tipo adulto no coincide con el campo adults.');
+        }
+
+        if (($typeCounts['junior'] ?? 0) !== $data['juniors']) {
+            abort(422, 'La cantidad de pasajeros tipo junior no coincide con el campo juniors.');
+        }
+
+        if (($typeCounts['child'] ?? 0) !== $data['children']) {
+            abort(422, 'La cantidad de pasajeros tipo niño no coincide con el campo children.');
+        }
     }
 }

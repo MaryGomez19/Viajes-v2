@@ -91,9 +91,36 @@ class Reservation extends Model
         return $this->hasOne(Transport::class)->withTrashed();
     }
 
-    //Hooks para propagar el archivado y restauración a vuelos, transporte y hotel
     protected static function booted(): void
     {
+        static::created(function (Reservation $reservation) {
+            if ($reservation->state !== 'canceled') {
+                $account = Account::create([
+                    'reservation_id' => $reservation->id,
+                    'total_amount'   => $reservation->total_amount ?? 0,
+                    'state'          => 'pending',
+                ]);
+                $account->recalculateState();
+            }
+        });
+
+        static::updated(function (Reservation $reservation) {
+            if (!$reservation->account) {
+                return;
+            }
+
+            if ($reservation->wasChanged('total_amount')) {
+                $reservation->account->update([
+                    'total_amount' => $reservation->total_amount ?? 0,
+                ]);
+                $reservation->account->recalculateState();
+            }
+
+            if ($reservation->wasChanged('state') && $reservation->state === 'canceled') {
+                $reservation->account->update(['state' => 'canceled']);
+            }
+        });
+
         static::deleting(function (Reservation $reservation) {
             $reservation->flight?->delete();
             $reservation->hotel?->delete();
@@ -110,5 +137,15 @@ class Reservation extends Model
     public function documents()
     {
         return $this->hasMany(ReservationDocument::class);
+    }
+
+    public function account()
+    {
+        return $this->hasOne(Account::class);
+    }
+
+    public function paymentReceipts()
+    {
+        return $this->hasMany(PaymentReceipt::class);
     }
 }
