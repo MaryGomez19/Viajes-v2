@@ -37,6 +37,7 @@ class PackageController extends Controller
             'price_adult' => 'required|numeric|min:0',
             'price_junior' => 'required|numeric|min:0',
             'price_child' => 'required|numeric|min:0',
+            'provider_cost' => 'nullable|numeric|min:0',
             'status' => 'sometimes|in:active,inactive',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
@@ -90,6 +91,7 @@ class PackageController extends Controller
             'price_adult' => 'sometimes|numeric|min:0',
             'price_junior' => 'sometimes|numeric|min:0',
             'price_child' => 'sometimes|numeric|min:0',
+            'provider_cost' => 'nullable|numeric|min:0',
             'status' => 'sometimes|in:active,inactive',
             'image' => 'nullable|image|max:2048',
         ]);

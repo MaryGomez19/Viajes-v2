@@ -80,7 +80,7 @@ class ReservationController extends Controller
         $user = $request->user();
 
         $reservas = Reservation::where('user_id', $user->id)
-            ->with(['package.city', 'flight', 'transport', 'hotel', 'passengers'])
+            ->with(['package.city', 'flight', 'transport', 'hotel.roomPrices', 'passengers'])
             ->latest()
             ->get();
 
@@ -93,12 +93,14 @@ class ReservationController extends Controller
 
         $reserva = Reservation::where('user_id', $user->id)
             ->where('id', $id)
-            ->with(['package.city', 'flight', 'transport', 'hotel', 'passengers'])
+            ->with(['package.city', 'flight', 'transport', 'hotel.roomPrices', 'passengers'])
             ->first();
 
         if (!$reserva) {
             return response()->json(['message' => 'Reserva no encontrada'], 404);
         }
+
+        $reserva->recalculateTotalAmount();
 
         return response()->json($this->formatReservationForClient($reserva));
     }
@@ -179,10 +181,20 @@ class ReservationController extends Controller
             return null;
         }
 
+        $hotel->loadMissing('roomPrices');
+
         $payload = [
             'name' => $hotel->name,
             'destination' => $hotel->destination,
             'check_in_out' => $hotel->check_in_out,
+            'room_prices' => $hotel->roomPrices
+                ->map(fn ($roomPrice) => [
+                    'occupancy_type' => $roomPrice->occupancy_type,
+                    'nightly_rate' => $roomPrice->nightly_rate,
+                    'total_rooms' => $roomPrice->total_rooms,
+                ])
+                ->values()
+                ->all(),
         ];
 
         if ($this->clientCanSeeHgdlKey($state, $hotel->hgdl_key)) {
@@ -592,5 +604,42 @@ class ReservationController extends Controller
             ($data['adults'] * $package->price_adult) +
             ($data['juniors'] * $package->price_junior) +
             ($data['children'] * $package->price_child);
+    }
+
+    public function packageProfits()
+    {
+        $reservations = Reservation::query()
+            ->with(['user', 'package.city'])
+            ->where('state', '!=', 'canceled')
+            ->whereHas('package', function ($q) {
+                $q->whereNotNull('provider_cost');
+            })
+            ->latest()
+            ->get();
+
+        $rows = $reservations->map(function (Reservation $reservation) {
+            $providerCost = $reservation->package?->provider_cost;
+            $clientCost = $reservation->packageSubtotal();
+
+            if ($providerCost === null || $clientCost <= 0) {
+                return null;
+            }
+
+            $profit = round((float) $clientCost - (float) $providerCost, 4);
+            $packageName = $reservation->package?->name ?? 'Paquete';
+            $cityName = $reservation->package?->city?->name;
+
+            return [
+                'id' => $reservation->id,
+                'reservation_id' => $reservation->id,
+                'provider_cost' => $providerCost,
+                'client_cost' => $clientCost,
+                'profit' => $profit,
+                'description' => $cityName ? "{$packageName} · {$cityName}" : $packageName,
+                'reservation' => $reservation,
+            ];
+        })->filter()->values();
+
+        return response()->json($rows, 200);
     }
 }

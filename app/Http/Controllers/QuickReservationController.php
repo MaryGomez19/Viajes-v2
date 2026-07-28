@@ -43,6 +43,7 @@ class QuickReservationController extends Controller
             'price_adult' => 'required|numeric|min:0',
             'price_junior' => 'required|numeric|min:0',
             'price_child' => 'required|numeric|min:0',
+            'package_provider_cost' => 'nullable|numeric|min:0|max:9999999999999.9999',
 
             // Datos de la reserva
             'reference_person' => 'nullable|string|max:45',
@@ -72,10 +73,10 @@ class QuickReservationController extends Controller
             'hotel.provider_cost' => 'nullable|numeric|min:0|max:9999999999999.9999',
             'hotel.client_cost' => 'nullable|numeric|min:0|max:9999999999999.9999',
             'hotel.observations' => 'nullable|string|max:1000',
-            'hotel.room_prices' => 'required_with:hotel|array|min:1',
-            'hotel.room_prices.*.occupancy_type' => 'required|in:single,double,triple,quadruple,suite',
-            'hotel.room_prices.*.nightly_rate' => 'required|numeric|min:0.0001|max:9999999999999.9999',
-            'hotel.room_prices.*.total_rooms' => 'required|integer|min:0|max:9999',
+            'hotel.room_prices' => 'nullable|array',
+            'hotel.room_prices.*.occupancy_type' => 'required_with:hotel.room_prices|in:single,double,triple,quadruple,suite',
+            'hotel.room_prices.*.nightly_rate' => 'nullable|numeric|min:0.0001|max:9999999999999.9999',
+            'hotel.room_prices.*.total_rooms' => 'nullable|integer|min:1|max:9999',
 
             // Vuelo — opcional
             'flight' => 'nullable|array',
@@ -156,6 +157,7 @@ class QuickReservationController extends Controller
                 'price_adult' => $data['price_adult'],
                 'price_junior' => $data['price_junior'],
                 'price_child' => $data['price_child'],
+                'provider_cost' => $data['package_provider_cost'] ?? null,
                 'status' => 'inactive',
                 'is_private' => true,
             ]);
@@ -211,12 +213,16 @@ class QuickReservationController extends Controller
                     'observations' => $data['hotel']['observations'] ?? null,
                 ]);
 
-                foreach ($data['hotel']['room_prices'] as $rp) {
+                foreach ($data['hotel']['room_prices'] ?? [] as $rp) {
+                    if (empty($rp['nightly_rate']) || (float) $rp['nightly_rate'] <= 0) {
+                        continue;
+                    }
+
                     RoomPrice::create([
                         'hotel_id' => $hotel->id,
                         'occupancy_type' => $rp['occupancy_type'],
                         'nightly_rate' => $rp['nightly_rate'],
-                        'total_rooms' => $rp['total_rooms'],
+                        'total_rooms' => $rp['total_rooms'] ?? 1,
                     ]);
                 }
             }

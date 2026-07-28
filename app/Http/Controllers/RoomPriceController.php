@@ -44,6 +44,9 @@ class RoomPriceController extends Controller
 
         $roomPrice = RoomPrice::create($data);
 
+        $hotel->loadMissing('reservation');
+        $hotel->reservation?->recalculateTotalAmount();
+
         return response()->json([
             'message'    => '¡Precio de habitación creado con éxito!',
             'room_price' => $roomPrice,
@@ -91,6 +94,9 @@ class RoomPriceController extends Controller
 
         $roomPrice->update($data);
 
+        $hotel->loadMissing('reservation');
+        $hotel->reservation?->recalculateTotalAmount();
+
         return response()->json([
             'message'    => 'Precio de habitación actualizado correctamente.',
             'room_price' => $roomPrice,
@@ -115,6 +121,9 @@ class RoomPriceController extends Controller
         }
 
         $roomPrice->delete();
+
+        $hotel->loadMissing('reservation');
+        $hotel->reservation?->recalculateTotalAmount();
 
         return response()->json([
             'message' => 'Precio de habitación eliminado correctamente.',

@@ -23,7 +23,8 @@ class Package extends Model
         'price_adult',
         'price_junior',
         'price_child',
-        'image_path', // Imagen principal
+        'provider_cost',
+        'image_path',
         'status',
         'is_private',
     ];

@@ -64,6 +64,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::post('/cities', [CityController::class, 'store']);
     Route::post('/roles', [RoleController::class, 'store']);
     Route::apiResource('users', UserController::class);
+    Route::get('reservations/package-profits', [ReservationController::class, 'packageProfits']);
     Route::apiResource('reservations', ReservationController::class)->except(['store']);
     Route::apiResource('reservations.passengers', PassengerController::class);
     Route::post('/reservations/quick', [QuickReservationController::class, 'store']);

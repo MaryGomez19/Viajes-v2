@@ -57,13 +57,37 @@ class Reservation extends Model
         );
     }
 
+    public function hotelRoomExtrasTotal(): float
+    {
+        $this->loadMissing('hotel.roomPrices');
+
+        if (!$this->hotel) {
+            return 0.0;
+        }
+
+        $total = $this->hotel->roomPrices->sum(function ($roomPrice) {
+            $rate = (float) $roomPrice->nightly_rate;
+            if ($rate <= 0) {
+                return 0.0;
+            }
+
+            $rooms = (int) $roomPrice->total_rooms;
+            $rooms = $rooms > 0 ? $rooms : 1;
+
+            return $rate * $rooms;
+        });
+
+        return round((float) $total, 2);
+    }
+
     public function recalculateTotalAmount(): void
     {
-        $this->loadMissing(['flight', 'transport']);
+        $this->loadMissing(['flight', 'transport', 'hotel.roomPrices']);
 
         $total = $this->packageSubtotal()
             + (float) ($this->flight?->client_cost ?? 0)
-            + (float) ($this->transport?->client_cost ?? 0);
+            + (float) ($this->transport?->client_cost ?? 0)
+            + $this->hotelRoomExtrasTotal();
 
         $total = round($total, 2);
 

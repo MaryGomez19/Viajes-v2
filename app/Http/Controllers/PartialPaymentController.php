@@ -26,10 +26,12 @@ class PartialPaymentController extends Controller
         $data = $request->validate([
             'amount'           => 'required|numeric|min:0.0001|max:9999999999999.9999',
             'transaction_type' => 'required|in:' . implode(',', PartialPayment::TRANSACTION_TYPES),
-            'paid_at'          => 'required|date|before_or_equal:today',
+            'paid_at'          => 'required|date|before_or_equal:now',
             'payment_method'   => 'required|in:' . implode(',', PartialPayment::PAYMENT_METHODS),
             'sent_to_supplier' => 'nullable|string|max:255',
             'confirmation'     => 'nullable|string|max:45',
+        ], [
+            'paid_at.before_or_equal' => 'La fecha del pago no puede ser futura.',
         ]);
 
         $this->validatePaymentAmount($account, $data);
@@ -64,10 +66,12 @@ class PartialPaymentController extends Controller
         $data = $request->validate([
             'amount'           => 'required|numeric|min:0.0001|max:9999999999999.9999',
             'transaction_type' => 'required|in:' . implode(',', PartialPayment::TRANSACTION_TYPES),
-            'paid_at'          => 'required|date|before_or_equal:today',
+            'paid_at'          => 'required|date|before_or_equal:now',
             'payment_method'   => 'required|in:' . implode(',', PartialPayment::PAYMENT_METHODS),
             'sent_to_supplier' => 'nullable|string|max:255',
             'confirmation'     => 'nullable|string|max:45',
+        ], [
+            'paid_at.before_or_equal' => 'La fecha del pago no puede ser futura.',
         ]);
 
         $this->validatePaymentAmount($account, $data, $partialPayment);
