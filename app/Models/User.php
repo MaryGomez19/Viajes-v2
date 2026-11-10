@@ -8,6 +8,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Models\Role;
 use App\Models\Package;
+use App\Models\ImportantDate;
 
 class User extends Authenticatable
 {
@@ -20,6 +21,7 @@ class User extends Authenticatable
         'password',
         'phone',
         'state',
+        'is_frequent_client',
         'role_id',
     ];
 
@@ -33,6 +35,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_frequent_client' => 'boolean',
         ];
     }
 
@@ -57,5 +60,10 @@ class User extends Authenticatable
     public function reservations()
     {
         return $this->hasMany(Reservation::class);
+    }
+
+    public function importantDates()
+    {
+        return $this->hasMany(ImportantDate::class);
     }
 }

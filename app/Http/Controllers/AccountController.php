@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Account;
+use App\Models\FinanceArchive;
 use App\Models\Reservation;
+use App\Support\FinanceArchiveFilter;
 use Illuminate\Http\Request;
 
 class AccountController extends Controller
@@ -38,7 +40,22 @@ class AccountController extends Controller
             });
         }
 
-        return response()->json($query->latest()->paginate($perPage)->withQueryString());
+        FinanceArchiveFilter::apply(
+            $query,
+            FinanceArchive::TYPE_ACCOUNT,
+            $request->input('visibility', 'active')
+        );
+
+        $paginator = $query->latest()->paginate($perPage)->withQueryString();
+        $paginator->getCollection()->transform(function (Account $account) {
+            return [
+                ...$account->toArray(),
+                'paid_amount' => $account->paidAmount(),
+                'balance_due' => $account->balanceDue(),
+            ];
+        });
+
+        return response()->json($paginator);
     }
 
     public function show(Account $account)

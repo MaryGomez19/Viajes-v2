@@ -10,20 +10,27 @@ class CityController extends Controller
     // 🚀 NUEVO: Regresa la lista de todas las ciudades a React
     public function index()
     {
-        $cities = City::all(); 
+        $cities = City::query()
+            ->select(['id', 'name', 'country', 'created_at', 'updated_at'])
+            ->orderBy('name')
+            ->get();
+
         return response()->json($cities, 200);
     }
 
-    // Tu función de guardar que ya tenías perfecta
     public function store(Request $request)
     {
+        if ($request->filled('pais') && ! $request->filled('country')) {
+            $request->merge(['country' => $request->input('pais')]);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:100',
-            'country' => 'nullable|string|max:100',
+            'country' => 'required|string|max:100',
         ]);
 
         $name = trim($validated['name']);
-        $country = trim($validated['country'] ?? 'México') ?: 'México';
+        $country = trim($validated['country']) ?: 'México';
 
         $alreadyExists = City::query()
             ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])

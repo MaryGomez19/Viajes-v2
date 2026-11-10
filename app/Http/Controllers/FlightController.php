@@ -32,6 +32,9 @@ class FlightController extends Controller
             'booking_source' => 'nullable|string|max:50',
             'client_cost' => 'nullable|numeric|min:0.0001',
             'provider_cost' => 'required|numeric|min:0.0001',
+            'supplier_payment' => 'nullable|numeric|min:0',
+            'bonus_discount' => 'nullable|numeric|min:0',
+            'bonus_discount_note' => 'nullable|string|max:500',
             'observations' => 'nullable|string|max:500',
         ]);
 
@@ -85,6 +88,9 @@ class FlightController extends Controller
             'booking_source' => 'nullable|string|max:50',
             'client_cost' => 'nullable|numeric|min:0.0001',
             'provider_cost' => 'required|numeric|min:0',
+            'supplier_payment' => 'nullable|numeric|min:0',
+            'bonus_discount' => 'nullable|numeric|min:0',
+            'bonus_discount_note' => 'nullable|string|max:500',
             'observations' => 'nullable|string|max:500',
         ]);
 

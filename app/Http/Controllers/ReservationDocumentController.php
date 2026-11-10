@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Reservation;
 use App\Models\ReservationDocument;
+use App\Support\PrivateFileStorage;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ReservationDocumentController extends Controller
@@ -17,7 +17,7 @@ class ReservationDocumentController extends Controller
                 'id' => $doc->id,
                 'type' => $doc->type,
                 'original_name' => $doc->original_name,
-                'url' => Storage::disk('public')->url($doc->file_path),
+                'url' => PrivateFileStorage::reservationDocumentFileUrl($doc->id),
                 'created_at' => $doc->created_at,
             ];
         });
@@ -34,11 +34,14 @@ class ReservationDocumentController extends Controller
 
         $existing = $reservation->documents()->where('type', $data['type'])->first();
         if ($existing) {
-            Storage::disk('public')->delete($existing->file_path);
+            PrivateFileStorage::delete($existing->file_path);
             $existing->delete();
         }
 
-        $path = $request->file('file')->store("reservations/{$reservation->id}", 'public');
+        $path = PrivateFileStorage::store(
+            $request->file('file'),
+            "reservations/{$reservation->id}/documents",
+        );
 
         $document = $reservation->documents()->create([
             'type' => $data['type'],
@@ -52,14 +55,14 @@ class ReservationDocumentController extends Controller
                 'id' => $document->id,
                 'type' => $document->type,
                 'original_name' => $document->original_name,
-                'url' => Storage::disk('public')->url($document->file_path),
+                'url' => PrivateFileStorage::reservationDocumentFileUrl($document->id),
             ],
         ], 201);
     }
 
     public function destroy(ReservationDocument $document)
     {
-        Storage::disk('public')->delete($document->file_path);
+        PrivateFileStorage::delete($document->file_path);
         $document->delete();
 
         return response()->json(['message' => 'Documento eliminado correctamente']);

@@ -18,6 +18,9 @@ class Flight extends Model
         'booking_source',
         'provider_cost',
         'client_cost',
+        'supplier_payment',
+        'bonus_discount',
+        'bonus_discount_note',
         'observations',
     ];
     protected $appends = ['profit'];

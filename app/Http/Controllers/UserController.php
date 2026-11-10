@@ -20,19 +20,62 @@ class UserController extends Controller
             return response()->json(['message' => 'Rol de cliente no configurado.'], 500);
         }
 
-        $query = User::with(['role', 'packages'])
+        $query = User::with(['role'])
             ->where('role_id', $rolCliente->id)
-            ->where('state', 'active');
+            ->withCount('reservations');
+
+        if ($request->filled('state')) {
+            $query->where('state', $request->state);
+        }
+
+        if ($request->boolean('frequent')) {
+            $query->where('is_frequent_client', true);
+        }
 
         if ($request->filled('search')) {
-            $search = addcslashes($request->search, '%_');
+            $search = addcslashes($request->search, '%_\\');
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('last_name', 'LIKE', "%{$search}%")
                     ->orWhere('email', 'LIKE', "%{$search}%");
             });
         }
 
-        return response()->json($query->limit(10)->get(), 200);
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+
+        return response()->json(
+            $query
+                ->orderByDesc('is_frequent_client')
+                ->orderBy('name')
+                ->orderBy('last_name')
+                ->paginate($perPage),
+            200,
+        );
+    }
+
+    public function toggleFrequent($id)
+    {
+        $rolCliente = Role::findByKey(Role::CLIENTE);
+
+        if (!$rolCliente) {
+            return response()->json(['message' => 'Rol de cliente no configurado.'], 500);
+        }
+
+        $user = User::find($id);
+
+        if (!$user || (int) $user->role_id !== (int) $rolCliente->id) {
+            return response()->json(['message' => 'Cliente no encontrado.'], 404);
+        }
+
+        $user->is_frequent_client = ! $user->is_frequent_client;
+        $user->save();
+
+        return response()->json([
+            'message' => $user->is_frequent_client
+                ? 'Marcado como cliente frecuente.'
+                : 'Ya no está marcado como cliente frecuente.',
+            'user' => $user->loadCount('reservations'),
+        ], 200);
     }
 
     public function store(Request $request)
@@ -107,6 +150,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'role_id' => 'sometimes|exists:roles,id',
             'state' => 'sometimes|in:active,inactive,banned',
+            'is_frequent_client' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -124,6 +168,10 @@ class UserController extends Controller
         $user->phone = $request->phone ?? $user->phone;
         $user->role_id = $request->role_id ?? $user->role_id;
         $user->state = $request->state ?? $user->state;
+
+        if ($request->has('is_frequent_client')) {
+            $user->is_frequent_client = $request->boolean('is_frequent_client');
+        }
 
         if ($request->filled('password')) {
             $user->password = Hash::make($request->password);

@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FinanceArchive;
 use App\Models\PaymentReceipt;
 use App\Models\Reservation;
+use App\Support\FinanceArchiveFilter;
+use App\Support\PrivateFileStorage;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class PaymentReceiptController extends Controller
 {
@@ -36,9 +38,9 @@ class PaymentReceiptController extends Controller
             'notes'  => 'nullable|string|max:500',
         ]);
 
-        $path = $request->file('file')->store(
+        $path = PrivateFileStorage::store(
+            $request->file('file'),
             "reservations/{$reservation->id}/payment-receipts",
-            'public'
         );
 
         $receipt = PaymentReceipt::create([
@@ -68,7 +70,7 @@ class PaymentReceiptController extends Controller
             ], 422);
         }
 
-        Storage::disk('public')->delete($paymentReceipt->file_path);
+        PrivateFileStorage::delete($paymentReceipt->file_path);
         $paymentReceipt->delete();
 
         return response()->json(['message' => 'Comprobante eliminado correctamente.']);
@@ -106,6 +108,12 @@ class PaymentReceiptController extends Controller
             });
         }
 
+        FinanceArchiveFilter::apply(
+            $query,
+            FinanceArchive::TYPE_RECEIPT,
+            $request->input('visibility', 'active')
+        );
+
         return response()->json(
             $this->mapReceipts($query->get())
         );
@@ -128,7 +136,7 @@ class PaymentReceiptController extends Controller
 
     public function destroyForAdmin(PaymentReceipt $paymentReceipt)
     {
-        Storage::disk('public')->delete($paymentReceipt->file_path);
+        PrivateFileStorage::delete($paymentReceipt->file_path);
         $paymentReceipt->delete();
 
         return response()->json(['message' => 'Comprobante eliminado correctamente.']);
@@ -163,7 +171,7 @@ class PaymentReceiptController extends Controller
             'amount'        => $receipt->amount,
             'notes'         => $receipt->notes,
             'original_name' => $receipt->original_name,
-            'url'           => Storage::disk('public')->url($receipt->file_path),
+            'url'           => PrivateFileStorage::paymentReceiptFileUrl($receipt->id),
             'status'        => $receipt->status,
             'admin_notes'   => $receipt->admin_notes,
             'created_at'    => $receipt->created_at,

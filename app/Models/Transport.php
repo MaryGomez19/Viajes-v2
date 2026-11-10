@@ -18,6 +18,9 @@ class Transport extends Model
         'supplier',
         'provider_cost',
         'client_cost',
+        'supplier_payment',
+        'bonus_discount',
+        'bonus_discount_note',
         'booking_source',
         'observations',
     ];

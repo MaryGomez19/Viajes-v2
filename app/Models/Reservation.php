@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\SupplierAccountService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -27,6 +28,7 @@ class Reservation extends Model
         'total_amount',
         'state',
         'observations',
+        'booking_channel',
     ];
 
     protected function casts(): array
@@ -151,6 +153,10 @@ class Reservation extends Model
                 ]);
                 $account->recalculateState();
             }
+
+            if ($reservation->state !== 'canceled') {
+                SupplierAccountService::ensureForReservation($reservation);
+            }
         });
 
         static::updated(function (Reservation $reservation) {
@@ -167,6 +173,7 @@ class Reservation extends Model
 
             if ($reservation->wasChanged('state') && $reservation->state === 'canceled') {
                 $reservation->account->update(['state' => 'canceled']);
+                $reservation->supplierAccount?->update(['state' => 'canceled']);
             }
         });
 
@@ -191,6 +198,11 @@ class Reservation extends Model
     public function account()
     {
         return $this->hasOne(Account::class);
+    }
+
+    public function supplierAccount()
+    {
+        return $this->hasOne(SupplierAccount::class);
     }
 
     public function paymentReceipts()

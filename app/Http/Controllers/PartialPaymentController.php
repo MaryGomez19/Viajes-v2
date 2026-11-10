@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Account;
 use App\Models\PartialPayment;
+use App\Services\TourPaymentPlanService;
 use Illuminate\Http\Request;
 
 class PartialPaymentController extends Controller
@@ -37,6 +38,7 @@ class PartialPaymentController extends Controller
         $this->validatePaymentAmount($account, $data);
 
         $payment = $account->partialPayments()->create($data);
+        TourPaymentPlanService::syncIfManaged($account);
         $account->recalculateState();
 
         return response()->json([
@@ -77,6 +79,7 @@ class PartialPaymentController extends Controller
         $this->validatePaymentAmount($account, $data, $partialPayment);
 
         $partialPayment->update($data);
+        TourPaymentPlanService::syncIfManaged($account);
         $account->recalculateState();
 
         return response()->json([
@@ -97,6 +100,7 @@ class PartialPaymentController extends Controller
         }
 
         $partialPayment->delete();
+        TourPaymentPlanService::syncIfManaged($account);
         $account->recalculateState();
 
         return response()->json(['message' => 'Pago eliminado correctamente.']);

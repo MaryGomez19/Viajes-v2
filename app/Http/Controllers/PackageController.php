@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Package;
+use App\Support\PackageInfoPriceValidation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -34,15 +35,36 @@ class PackageController extends Controller
             'departure_date' => 'required|date|after_or_equal:today',
             'return_date' => 'required|date|after_or_equal:departure_date',
             'stock' => 'required|integer|min:0',
+            'adults' => 'nullable|integer|min:0',
+            'juniors' => 'nullable|integer|min:0',
+            'children' => 'nullable|integer|min:0',
+            'quota_adults' => 'nullable|integer|min:0',
+            'quota_juniors' => 'nullable|integer|min:0',
+            'quota_children' => 'nullable|integer|min:0',
             'price_adult' => 'required|numeric|min:0',
             'price_junior' => 'required|numeric|min:0',
             'price_child' => 'required|numeric|min:0',
+            'package_total_cost' => 'nullable|numeric|min:0',
+            'platform_profit_percent' => 'nullable|integer|in:17,18',
             'provider_cost' => 'nullable|numeric|min:0',
+            'client_cost' => 'nullable|numeric|min:0',
+            'supplier_payment' => 'nullable|numeric|min:0',
+            'bonus_discount' => 'nullable|numeric|min:0',
+            'bonus_discount_note' => 'nullable|string|max:500',
             'status' => 'sometimes|in:active,inactive',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
 
-        $packageData = collect($validated)->except(['image'])->all();
+        $validated = self::normalizePackageQuotas($validated);
+
+        PackageInfoPriceValidation::assert($validated);
+
+        $packageData = collect($validated)->except([
+            'image',
+            'adults',
+            'juniors',
+            'children',
+        ])->all();
         $packageData['user_id'] = $request->user()->id;
         $packageData['status'] = $packageData['status'] ?? 'active';
         $packageData['is_private'] = false;
@@ -88,15 +110,55 @@ class PackageController extends Controller
             'departure_date' => 'sometimes|date',
             'return_date' => 'sometimes|date|after_or_equal:' . $request->input('departure_date', $package->departure_date->format('Y-m-d')),
             'stock' => 'sometimes|integer|min:0',
+            'adults' => 'nullable|integer|min:0',
+            'juniors' => 'nullable|integer|min:0',
+            'children' => 'nullable|integer|min:0',
+            'quota_adults' => 'nullable|integer|min:0',
+            'quota_juniors' => 'nullable|integer|min:0',
+            'quota_children' => 'nullable|integer|min:0',
             'price_adult' => 'sometimes|numeric|min:0',
             'price_junior' => 'sometimes|numeric|min:0',
             'price_child' => 'sometimes|numeric|min:0',
+            'package_total_cost' => 'sometimes|nullable|numeric|min:0',
+            'platform_profit_percent' => 'sometimes|nullable|integer|in:17,18',
             'provider_cost' => 'nullable|numeric|min:0',
+            'client_cost' => 'nullable|numeric|min:0',
+            'supplier_payment' => 'nullable|numeric|min:0',
+            'bonus_discount' => 'nullable|numeric|min:0',
+            'bonus_discount_note' => 'nullable|string|max:500',
             'status' => 'sometimes|in:active,inactive',
             'image' => 'nullable|image|max:2048',
         ]);
 
-        $data = collect($validated)->except(['image'])->all();
+        $merged = array_merge($package->only([
+            'package_total_cost',
+            'price_adult',
+            'price_junior',
+            'price_child',
+            'quota_adults',
+            'quota_juniors',
+            'quota_children',
+        ]), $validated);
+
+        $merged = self::normalizePackageQuotas($merged);
+
+        PackageInfoPriceValidation::assert($merged);
+
+        $data = collect($validated)->except([
+            'image',
+            'adults',
+            'juniors',
+            'children',
+        ])->all();
+
+        if (isset($merged['stock'])) {
+            $data['stock'] = $merged['stock'];
+        }
+        if (array_key_exists('quota_adults', $merged)) {
+            $data['quota_adults'] = $merged['quota_adults'];
+            $data['quota_juniors'] = $merged['quota_juniors'];
+            $data['quota_children'] = $merged['quota_children'];
+        }
 
         if ($request->hasFile('image')) {
             if ($package->image_path) {
@@ -141,5 +203,40 @@ class PackageController extends Controller
             ->get();
 
         return response()->json($packages, 200);
+    }
+
+    /**
+     * Unifica cupos por edad y stock total; alimenta validación de precios por edad.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private static function normalizePackageQuotas(array $data): array
+    {
+        $qa = (int) ($data['quota_adults'] ?? $data['adults'] ?? 0);
+        $qj = (int) ($data['quota_juniors'] ?? $data['juniors'] ?? 0);
+        $qc = (int) ($data['quota_children'] ?? $data['children'] ?? 0);
+        $sum = $qa + $qj + $qc;
+
+        if ($sum > 0) {
+            $data['quota_adults'] = $qa;
+            $data['quota_juniors'] = $qj;
+            $data['quota_children'] = $qc;
+            $data['stock'] = $sum;
+        } elseif (isset($data['stock']) && (int) $data['stock'] > 0) {
+            $stock = (int) $data['stock'];
+            $data['quota_adults'] = $data['quota_adults'] ?? $stock;
+            $data['quota_juniors'] = $data['quota_juniors'] ?? 0;
+            $data['quota_children'] = $data['quota_children'] ?? 0;
+            $qa = (int) $data['quota_adults'];
+            $qj = (int) $data['quota_juniors'];
+            $qc = (int) $data['quota_children'];
+        }
+
+        $data['adults'] = $qa;
+        $data['juniors'] = $qj;
+        $data['children'] = $qc;
+
+        return $data;
     }
 }

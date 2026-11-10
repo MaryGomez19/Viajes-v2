@@ -14,12 +14,15 @@ class Account extends Model
         'reservation_id',
         'total_amount',
         'state',
+        'payment_plan_installments',
+        'payment_plan_managed',
     ];
 
     protected function casts(): array
     {
         return [
             'total_amount' => 'decimal:4',
+            'payment_plan_managed' => 'boolean',
         ];
     }
 

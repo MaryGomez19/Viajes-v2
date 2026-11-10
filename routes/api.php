@@ -19,9 +19,16 @@ use App\Http\Controllers\PassengerController;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\PartialPaymentController;
 use App\Http\Controllers\ScheduledPaymentController;
+use App\Http\Controllers\FinanceArchiveController;
+use App\Http\Controllers\SupplierAccountController;
+use App\Http\Controllers\SupplierPaymentController;
 use App\Http\Controllers\PaymentReceiptController;
 use App\Http\Controllers\QuickReservationController;
+use App\Http\Controllers\TourReservationController;
 use App\Http\Controllers\AdminNotificationController;
+use App\Http\Controllers\ImportantDateController;
+use App\Http\Controllers\GoogleCalendarController;
+use App\Http\Controllers\SecuredFileController;
 
 // 1. Recursos y Catálogos generales públicos o semi-públicos
 Route::get('packages/public', [PackageController::class, 'publicIndex']);
@@ -57,17 +64,29 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/reservations', [ReservationController::class, 'store']);
     Route::get('/perfil', [UserController::class, 'perfil']);
     Route::put('/perfil', [UserController::class, 'actualizarPerfil']);
+
+    Route::get('reservation-documents/{document}/file', [
+        SecuredFileController::class,
+        'reservationDocument',
+    ]);
+    Route::get('payment-receipts/{paymentReceipt}/file', [
+        SecuredFileController::class,
+        'paymentReceipt',
+    ]);
 });
 
 // B) 👑 SOLO ADMINISTRADORES
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::post('/cities', [CityController::class, 'store']);
     Route::post('/roles', [RoleController::class, 'store']);
+    Route::patch('users/{user}/frequent', [UserController::class, 'toggleFrequent']);
     Route::apiResource('users', UserController::class);
     Route::get('reservations/package-profits', [ReservationController::class, 'packageProfits']);
+    Route::get('reservations/supplier-payables', [ReservationController::class, 'supplierPayables']);
     Route::apiResource('reservations', ReservationController::class)->except(['store']);
     Route::apiResource('reservations.passengers', PassengerController::class);
     Route::post('/reservations/quick', [QuickReservationController::class, 'store']);
+    Route::post('/reservations/tours', [TourReservationController::class, 'store']);
 
     //reservaciones
     Route::patch('reservations/{id}/restore', [ReservationController::class, 'restore']);
@@ -97,6 +116,9 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::delete('/package-images/{id}', [PackageImageController::class, 'destroy']);
 
     // 💰 Cuentas, pagos parciales y abonos programados
+    Route::get('finance-archives/ids', [FinanceArchiveController::class, 'ids']);
+    Route::apiResource('finance-archives', FinanceArchiveController::class)->only(['index', 'store', 'destroy']);
+
     Route::get('accounts', [AccountController::class, 'index']);
     Route::get('accounts/{account}', [AccountController::class, 'show']);
     Route::put('accounts/{account}', [AccountController::class, 'update']);
@@ -105,8 +127,21 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::apiResource('accounts.partial-payments', PartialPaymentController::class);
     Route::apiResource('accounts.scheduled-payments', ScheduledPaymentController::class);
 
+    Route::get('supplier-accounts', [SupplierAccountController::class, 'index']);
+    Route::get('supplier-accounts/{supplierAccount}', [SupplierAccountController::class, 'show']);
+    Route::get('reservations/{reservation}/supplier-account', [SupplierAccountController::class, 'showByReservation']);
+    Route::apiResource('supplier-accounts.supplier-payments', SupplierPaymentController::class);
+
     Route::get('admin/notifications/count', [AdminNotificationController::class, 'count']);
     Route::get('admin/notifications', [AdminNotificationController::class, 'index']);
+
+    Route::get('important-dates/upcoming', [ImportantDateController::class, 'upcoming']);
+    Route::post('important-dates/{importantDate}/sync', [ImportantDateController::class, 'sync']);
+    Route::apiResource('important-dates', ImportantDateController::class);
+
+    Route::get('google-calendar/status', [GoogleCalendarController::class, 'status']);
+    Route::get('google-calendar/connect-url', [GoogleCalendarController::class, 'connectUrl']);
+    Route::delete('google-calendar/connection', [GoogleCalendarController::class, 'disconnect']);
 });
 
 // C) 👥 SOLO CLIENTES 

@@ -10,7 +10,7 @@ use App\Models\Hotel;
 use App\Models\Transport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
+use App\Support\PrivateFileStorage;
 use Illuminate\Validation\Rule;
 
 class ReservationController extends Controller
@@ -57,6 +57,11 @@ class ReservationController extends Controller
             $query->whereHas('package', function ($q) use ($request) {
                 $q->where('status', $request->input('package_status'));
             });
+        }
+
+        if ($request->filled('booking_channel')) {
+            $request->validate(['booking_channel' => 'in:quick_private,tour']);
+            $query->where('booking_channel', $request->input('booking_channel'));
         }
 
         if ($request->filled('search')) {
@@ -302,7 +307,7 @@ class ReservationController extends Controller
                 'id' => $doc->id,
                 'type' => $doc->type,
                 'original_name' => $doc->original_name,
-                'url' => Storage::disk('public')->url($doc->file_path),
+                'url' => PrivateFileStorage::reservationDocumentFileUrl($doc->id),
                 'created_at' => $doc->created_at,
             ])
             ->values()
@@ -612,34 +617,196 @@ class ReservationController extends Controller
             ->with(['user', 'package.city'])
             ->where('state', '!=', 'canceled')
             ->whereHas('package', function ($q) {
-                $q->whereNotNull('provider_cost');
+                $q->where(function ($inner) {
+                    $inner->whereNotNull('provider_cost')
+                        ->orWhereNotNull('supplier_payment');
+                });
             })
             ->latest()
             ->get();
 
         $rows = $reservations->map(function (Reservation $reservation) {
-            $providerCost = $reservation->package?->provider_cost;
-            $clientCost = $reservation->packageSubtotal();
-
-            if ($providerCost === null || $clientCost <= 0) {
+            $package = $reservation->package;
+            if (! $package) {
                 return null;
             }
 
-            $profit = round((float) $clientCost - (float) $providerCost, 4);
-            $packageName = $reservation->package?->name ?? 'Paquete';
-            $cityName = $reservation->package?->city?->name;
+            $supplierCost = $package->supplier_payment ?? $package->provider_cost;
+            if ($supplierCost === null) {
+                return null;
+            }
+
+            $clientCost = (float) ($package->client_cost ?? 0);
+            if ($clientCost <= 0) {
+                $clientCost = $reservation->packageSubtotal();
+            }
+
+            if ($clientCost <= 0) {
+                return null;
+            }
+
+            $bonus = (float) ($package->bonus_discount ?? 0);
+            $profit = round((float) $clientCost - (float) $supplierCost, 4);
+            $profitNet = round($profit - $bonus, 4);
+
+            $packageName = $package->name ?? 'Paquete';
+            $cityName = $package->city?->name;
+            $isTour = $reservation->booking_channel === 'tour';
 
             return [
                 'id' => $reservation->id,
                 'reservation_id' => $reservation->id,
-                'provider_cost' => $providerCost,
+                'booking_channel' => $reservation->booking_channel,
+                'service_type' => $isTour ? 'tour' : 'package',
+                'provider_cost' => $supplierCost,
                 'client_cost' => $clientCost,
+                'platform_cost' => $package->package_total_cost,
+                'bonus_discount' => $bonus > 0 ? $bonus : null,
                 'profit' => $profit,
+                'profit_net' => $profitNet,
                 'description' => $cityName ? "{$packageName} · {$cityName}" : $packageName,
                 'reservation' => $reservation,
             ];
         })->filter()->values();
 
         return response()->json($rows, 200);
+    }
+
+    public function supplierPayables()
+    {
+        $rows = collect();
+
+        $activeReservation = fn ($q) => $q->where('state', '!=', 'canceled');
+
+        Flight::query()
+            ->with(['reservation.user'])
+            ->whereHas('reservation', $activeReservation)
+            ->each(function (Flight $flight) use ($rows) {
+                $amount = $this->resolveSupplierAmount(
+                    $flight->supplier_payment,
+                    $flight->provider_cost,
+                );
+                if ($amount === null) {
+                    return;
+                }
+
+                $reservation = $flight->reservation;
+                $rows->push([
+                    'id' => $flight->id,
+                    'reservation_id' => $flight->reservation_id,
+                    'service_type' => 'flight',
+                    'supplier_amount' => $amount,
+                    'supplier_label' => $flight->airline_name,
+                    'description' => trim(($flight->airline_name ?? 'Vuelo').' · '.($flight->destination ?? '')),
+                    'departure_date' => $reservation?->departure_date,
+                    'reservation' => $reservation,
+                ]);
+            });
+
+        Transport::query()
+            ->with(['reservation.user'])
+            ->whereHas('reservation', $activeReservation)
+            ->each(function (Transport $transport) use ($rows) {
+                $amount = $this->resolveSupplierAmount(
+                    $transport->supplier_payment,
+                    $transport->provider_cost,
+                );
+                if ($amount === null) {
+                    return;
+                }
+
+                $reservation = $transport->reservation;
+                $rows->push([
+                    'id' => $transport->id,
+                    'reservation_id' => $transport->reservation_id,
+                    'service_type' => 'transport',
+                    'supplier_amount' => $amount,
+                    'supplier_label' => $transport->supplier ?: $transport->company,
+                    'description' => trim(($transport->company ?? 'Transporte').' · '.($transport->destination ?? '')),
+                    'departure_date' => $reservation?->departure_date,
+                    'reservation' => $reservation,
+                ]);
+            });
+
+        Hotel::query()
+            ->with(['reservation.user'])
+            ->whereHas('reservation', $activeReservation)
+            ->each(function (Hotel $hotel) use ($rows) {
+                $amount = $this->resolveSupplierAmount(null, $hotel->provider_cost);
+                if ($amount === null) {
+                    return;
+                }
+
+                $reservation = $hotel->reservation;
+                $rows->push([
+                    'id' => $hotel->id,
+                    'reservation_id' => $hotel->reservation_id,
+                    'service_type' => 'hotel',
+                    'supplier_amount' => $amount,
+                    'supplier_label' => $hotel->supplier,
+                    'description' => trim(($hotel->name ?? 'Hotel').' · '.($hotel->destination ?? '')),
+                    'departure_date' => $reservation?->departure_date,
+                    'reservation' => $reservation,
+                ]);
+            });
+
+        Reservation::query()
+            ->with(['user', 'package.city'])
+            ->where('state', '!=', 'canceled')
+            ->whereHas('package', function ($q) {
+                $q->where(function ($inner) {
+                    $inner->whereNotNull('supplier_payment')
+                        ->orWhereNotNull('provider_cost');
+                });
+            })
+            ->latest()
+            ->each(function (Reservation $reservation) use ($rows) {
+                $package = $reservation->package;
+                if (! $package) {
+                    return;
+                }
+
+                $amount = $this->resolveSupplierAmount(
+                    $package->supplier_payment,
+                    $package->provider_cost,
+                );
+                if ($amount === null) {
+                    return;
+                }
+
+                $isTour = $reservation->booking_channel === 'tour';
+                $packageName = $package->name ?? 'Paquete';
+                $cityName = $package->city?->name;
+
+                $rows->push([
+                    'id' => $reservation->id,
+                    'reservation_id' => $reservation->id,
+                    'service_type' => $isTour ? 'tour' : 'package',
+                    'booking_channel' => $reservation->booking_channel,
+                    'supplier_amount' => $amount,
+                    'supplier_label' => null,
+                    'description' => $cityName ? "{$packageName} · {$cityName}" : $packageName,
+                    'departure_date' => $reservation->departure_date,
+                    'reservation' => $reservation,
+                ]);
+            });
+
+        $sorted = $rows
+            ->sortByDesc('supplier_amount')
+            ->values();
+
+        return response()->json($sorted, 200);
+    }
+
+    private function resolveSupplierAmount(mixed $supplierPayment, mixed $providerCost): ?float
+    {
+        $raw = $supplierPayment ?? $providerCost;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        $amount = (float) $raw;
+
+        return $amount > 0 ? round($amount, 4) : null;
     }
 }
